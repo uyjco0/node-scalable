@@ -2,7 +2,7 @@
 
 ## Demo of a scalable and distributed application
 
-The current project is building a demo of a scalable and distributed application composed by Node.js-based web and worker nodes with a PostgreSQL master/slave backend.
+The current project is building a demo of a scalable and distributed application composed by Node.js-based web and worker instances with a PostgreSQL master/slave backend.
 
 The scalability and distributed properties are built using:
 * Apache Zookeeper
