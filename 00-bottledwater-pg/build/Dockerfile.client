@@ -1,0 +1,31 @@
+
+#
+# Builds a docker image for the Bottled Water client.
+# Expects links to "postgres", "kafka" and "schema-registry" containers:
+#
+# Source:
+#    - https://github.com/confluentinc/bottledwater-pg/blob/master/build/Dockerfile.client
+#
+
+FROM postgres:9.5.2
+MAINTAINER Jorge Couchet <jorge.couchet@gmail.com>
+
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        libcurl3 libjansson4 libpq5
+
+ADD avro.tar.gz /
+ADD librdkafka.tar.gz /
+ADD bottledwater-bin.tar.gz /
+
+COPY bottledwater-docker-wrapper.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/bottledwater-docker-wrapper.sh
+
+RUN cp /usr/local/lib/librdkafka.so.* /usr/lib/x86_64-linux-gnu && \
+    cp /usr/local/lib/libavro.so.* /usr/lib/x86_64-linux-gnu
+
+ENV INSTANCE_NAME=bwclient1
+
+ENTRYPOINT ["/usr/local/bin/bottledwater-docker-wrapper.sh"]
+CMD [ "--allow-unkeyed" ]

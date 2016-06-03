@@ -1,0 +1,156 @@
+
+#
+#
+# It builds a PostgreSQL image with the Bottled Water plugin applied to it.
+# 
+# The build process generates also the Bottled Water plugin 's tar'ed binaries 
+# which can be apply to a base Postgres image:
+#    - These tar'ed binaries are copied to the volume '/usr/local/pg-plugin'
+#
+
+FROM postgres:9.5.2
+MAINTAINER Jorge Couchet <jorge.couchet@gmail.com>
+
+
+# ******************************************************
+# *********** USING CODE FROM CONFLUENTIC **************
+#******************************************************
+#
+# Source:
+#    - https://github.com/confluentinc/bottledwater-pg/blob/master/build/Dockerfile.build
+# 
+
+
+RUN apt-get update && \
+    # --force-yes is needed because we may need to downgrade libpq5 to $PG_MAJOR
+    # (set by the postgres:9.5 Docker image).  Confusingly the postgres:x.y
+    # Docker images have been known to include libpq5 version > x.y, which we
+    # may not yet be compatible with, so we can't rely on just specifying the
+    # image tag to pin the libpq version.
+    apt-get install -y --no-install-recommends --force-yes \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        libcurl4-openssl-dev \
+        libjansson-dev \
+        libpq5=${PG_MAJOR}\* \
+        libpq-dev=${PG_MAJOR}\* \
+        pkg-config \
+        postgresql-server-dev-${PG_MAJOR}=${PG_MAJOR}\*
+
+# Folder to share the Bottle watter 's binaries
+RUN mkdir -p /usr/local/pg-plugin
+
+ENV RDKAFKA_VERSION=0.9.0 \
+    AVRO_C_VERSION=1.8.0 \
+    AVRO_C_SHASUM="af7757633ccf067b1f140c58161e2cdc2f2f003d  /root/avro-c-1.8.0.tar.gz"
+
+
+# Avro
+#
+# The following line is custom:
+#    - 'cp usr/local/lib/libavro.so.* /usr/lib/x86_64-linux-gnu/':
+#         - This line is in the file 'Dockerfile.postgres'
+#         - When this line is not added we have an error where runnung the script '02-enable-plugin.sh':
+#              - The file libavro.so.* is not found
+#
+# The following line is custom:
+#    - 'cp avro.tar.gz /usr/local/pg-plugin'
+RUN curl -o /root/avro-c-${AVRO_C_VERSION}.tar.gz -SL http://archive.apache.org/dist/avro/avro-${AVRO_C_VERSION}/c/avro-c-${AVRO_C_VERSION}.tar.gz && \
+    echo "${AVRO_C_SHASUM}" | shasum -a 1 -b -c && \
+    tar -xzf /root/avro-c-${AVRO_C_VERSION}.tar.gz -C /root && \
+    mkdir /root/avro-c-${AVRO_C_VERSION}/build && \
+    cd /root/avro-c-${AVRO_C_VERSION}/build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=RelWithDebInfo && \
+    make && make test && make install && cd / && \
+    tar czf avro.tar.gz usr/local/include/avro usr/local/lib/libavro* usr/local/lib/pkgconfig/avro-c.pc && \
+    cp usr/local/lib/libavro.so.* /usr/lib/x86_64-linux-gnu/ && \
+    cp avro.tar.gz /usr/local/pg-plugin
+    
+
+# librdkafka
+#
+# The following line is custom:
+#    - 'cp librdkafka.tar.gz /usr/local/pg-plugin'
+RUN curl -o /root/librdkafka-${RDKAFKA_VERSION}.tar.gz -SL https://github.com/edenhill/librdkafka/archive/v${RDKAFKA_VERSION}.tar.gz && \
+    tar -xzf /root/librdkafka-${RDKAFKA_VERSION}.tar.gz -C /root && \
+    cd /root/librdkafka-${RDKAFKA_VERSION} && ./configure && make && make install && cd / && \
+    tar czf librdkafka.tar.gz usr/local/include/librdkafka usr/local/lib/librdkafka* && \
+    cp librdkafka.tar.gz /usr/local/pg-plugin
+
+# Bottled Water
+#
+# The following line is custom:
+#    - 'cp bottledwater-bin.tar.gz /usr/local/pg-plugin'
+COPY . /root/bottledwater
+RUN cd /root/bottledwater && \
+    make clean && make && make install && cd / && \
+    tar czf bottledwater-ext.tar.gz usr/lib/postgresql/${PG_MAJOR}/lib/bottledwater.so usr/share/postgresql/${PG_MAJOR}/extension/bottledwater* && \
+    cp /root/bottledwater/kafka/bottledwater /root/bottledwater/client/bwtest /usr/local/bin && \
+    tar czf bottledwater-bin.tar.gz usr/local/bin/bottledwater usr/local/bin/bwtest && \
+    cp bottledwater-bin.tar.gz /usr/local/pg-plugin
+
+
+# **************************************
+# *********** CUSTOM CODE **************
+# *************************************
+
+# Folder to share a master 's base backup when configuring a slave
+RUN mkdir -p /usr/share/base-backup
+# The file overlays if the volume is mounted with a host directory:
+#    - Source:
+#         - https://docs.docker.com/engine/userguide/containers/dockervolumes/#mount-a-host-directory-as-a-data-volume
+RUN touch /usr/share/base-backup/nobase.txt
+
+# Folder to share fresh configuration files when configuring a slave
+RUN mkdir -p /usr/share/fresh-config
+COPY pg-config/conf/postgresql.conf /usr/share/fresh-config
+COPY pg-config/conf/pg_hba.conf /usr/share/fresh-config
+
+
+VOLUME [ "/usr/local/pg-plugin", "/usr/share/base-backup"]
+
+ENV INSTANCE_NAME "pg1"
+
+# Controlling the PostgreSql server replication configuration:
+#    - REPLICATION: if it is set to 1, it is configured Streaming Replication with a Physical Replication Slot:
+#         - Otherwise it is configured a standard PostgreSql server
+#    - If REPLICATION=1, then MASTER=1 means that the PostgreSql server is configured as a master:
+#         - Otherwise it is configured as a slave
+#    - If REPLICATION=1, then ASYNC=1 means that the replication is asynchronous:
+#         - Otherwise it is synchronous
+#    - If REPLICATION=1 and ASYNC !=1, then it has the value for the parameter 'synchronous_commit'
+ENV REPLICATION 0
+ENV MASTER 1
+ENV ASYNC 1
+ENV COMMIT_LEVEL "remote_write"
+
+# The '/usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample' will be sourced into the real config file on database creation:
+#    - Source: https://github.com/docker-library/postgres/issues/105
+# ---
+# Here I'm copying the configuration file with my own settings
+COPY pg-config/conf/postgresql.conf /usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample
+
+
+# The scripts copied to '/docker-entrypoint-initdb.d' are executed automatically by the script being executed by the image 's ENTRYPOINT.
+# The scripts are executed in sorted name order as defined by the current locale:
+#    - Source:
+#         - https://hub.docker.com/_/postgres/
+# ---
+# Here it is passed the script in order to configure Postgres
+COPY pg-config/scripts/configure.sh /docker-entrypoint-initdb.d/01-configure.sh
+#
+# Here it is passed the SQL script in order to create the needed tables in the database:
+#    - The database is created by running the Docker image with the flags:
+#         - '-e POSTGRES_USER=user_name'
+#         - '-e POSTGRES_PASSWORD=user_password'
+#         - '-e POSTGRES_DB=database_name'
+COPY pg-config/sql/tables-create.sql /docker-entrypoint-initdb.d/02-tables-create.sql
+
+# Copy the modified version of the entry point script
+COPY ./build/docker-entrypoint.sh /usr/sbin
+RUN ["chmod", "+x", "/usr/sbin/docker-entrypoint.sh"]
+
+ENTRYPOINT [ "/usr/sbin/docker-entrypoint.sh" ]
+CMD ["postgres"]

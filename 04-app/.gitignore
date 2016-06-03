@@ -1,0 +1,7 @@
+
+# Ignore the file with plain passwords
+config/secret/index.js
+
+# Ignore the Node.js modules.
+# Instead run 'npm install' where is located the 'packages.json'
+node_modules/

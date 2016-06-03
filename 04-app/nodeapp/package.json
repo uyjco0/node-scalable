@@ -1,0 +1,48 @@
+{
+  "name": "node-scalable",
+  "version": "0.1.0",
+  "description": "Demo of a scalable and distributed Node.js application composed by web and worker nodes. The scalability and distributed properties are built using Apache Zookeeper, Apache Kafka, Confluent Schema Registry, Confluent Rest Proxy, Docker, Weave, Supervisor, HAProxy and Logstash",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "dependencies": {
+    "bunyan": "^1.8.0",
+    "busboy": "^0.2.13",
+    "heapdump": "^0.3.7",
+    "kafka-rest": "^0.0.4",
+    "memwatch-next": "^0.3.0",
+    "pg": "^4.5.5",
+    "pg-copy-streams": "^0.3.0"
+  },
+  "engines": {
+    "node": "6.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uyjco0/node-scalable.git"
+  },
+  "keywords": [
+    "node.js",
+    "web node",
+    "worker node",
+    "postgresql",
+    "postgresql streaming replication",
+    "database streaming",
+    "logical decoding",
+    "bottledwater plugin",
+    "pgbouncer",
+    "pgpool",
+    "apache zookeeper",
+    "apache kafka",
+    "confluent schema registry",
+    "confluent rest proxy",
+    "docker",
+    "weave",
+    "supervisord",
+    "haproxy",
+    "logstash"
+  ],
+  "author": "Jorge Couchet <jorge.couchet@gmail.com>",
+  "license": "MIT"
+}
