@@ -23,7 +23,7 @@ The scalability and distributed properties are built using:
 
 Application behavior:
 * The application 's end user is able to load a CSV file in the PostgreSQL backend through some of the available 'node-web' instances:
-    * Each instance is a Node.js-based HTTP server)
+    * Each instance is a Node.js-based HTTP server
     * The CSV file is loaded to the database using a Node.js stream:
         * Once a CSV file is loaded to the database, the added file 's lines are automatically streamed to Apache Kafka by using the Bottledwater-pg plugin/client:
             * These message are serialized using Avro
